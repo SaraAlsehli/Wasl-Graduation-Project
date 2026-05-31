@@ -1,0 +1,269 @@
+{% extends 'base.html' %}
+{% block title %}Analyze Text — TextDifficulty.ai{% endblock %}
+
+{% block content %}
+<div class="section-header fade-in">
+    <h1>📊 Text Analysis</h1>
+    <p>Paste or type text below to analyze its readability and difficulty level.</p>
+</div>
+
+<!-- Input Section -->
+<div class="card fade-in" style="margin-bottom: 24px;">
+    <div class="textarea-wrap">
+        <textarea id="textInput" placeholder="Paste your text here to analyze its difficulty...&#10;&#10;Example: The quantum mechanical model describes the behavior of electrons in atoms using wave functions and probability distributions, fundamentally challenging our classical understanding of physical reality."></textarea>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+        <span id="charCount" style="font-size: 13px; color: var(--text-muted); font-family: var(--font-mono);">0 characters · 0 words</span>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" onclick="loadSampleText()">Load Sample</button>
+            <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeText()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                Analyze Text
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Results (hidden by default) -->
+<div id="results" class="hidden">
+
+    <!-- Overview Metrics -->
+    <div class="grid-4 fade-in" id="metricsGrid" style="margin-bottom: 24px;"></div>
+
+    <!-- Difficulty Badge -->
+    <div class="card fade-in" id="difficultyCard" style="margin-bottom: 24px; text-align: center;"></div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('heatmap', this)">Word Heatmap</button>
+        <button class="tab" onclick="switchTab('sentences', this)">Sentence Analysis</button>
+        <button class="tab" onclick="switchTab('words', this)">Complex Words</button>
+        <button class="tab" onclick="switchTab('metrics', this)">All Metrics</button>
+    </div>
+
+    <!-- Heatmap Tab -->
+    <div id="tab-heatmap" class="tab-content fade-in">
+        <div class="card">
+            <div class="card-header">
+                <h3>📍 Word Difficulty Heatmap</h3>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+                Each word is colored by difficulty:
+                <span style="color: var(--green);">■ Easy</span> ·
+                <span style="color: #84cc16;">■ Moderate</span> ·
+                <span style="color: var(--yellow);">■ Challenging</span> ·
+                <span style="color: var(--red);">■ Hard</span>
+            </p>
+            <div class="heatmap-container" id="heatmapContainer"></div>
+        </div>
+    </div>
+
+    <!-- Sentences Tab -->
+    <div id="tab-sentences" class="tab-content hidden">
+        <div class="card">
+            <div class="card-header">
+                <h3>📝 Sentence-by-Sentence Analysis</h3>
+            </div>
+            <div id="sentencesContainer"></div>
+        </div>
+    </div>
+
+    <!-- Complex Words Tab -->
+    <div id="tab-words" class="tab-content hidden">
+        <div class="card">
+            <div class="card-header">
+                <h3>🔤 Most Challenging Words</h3>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="words-table" id="wordsTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Word</th>
+                            <th>Syllables</th>
+                            <th>Frequency (per M)</th>
+                            <th>Difficulty</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Metrics Tab -->
+    <div id="tab-metrics" class="tab-content hidden">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header"><h3>📐 Readability Scores</h3></div>
+                <div id="readabilityMetrics"></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><h3>📈 Text Statistics</h3></div>
+                <div id="textStats"></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Loading -->
+<div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <p style="color: var(--text-secondary);">Analyzing text...</p>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const textInput = document.getElementById('textInput');
+const charCount = document.getElementById('charCount');
+
+textInput.addEventListener('input', () => {
+    const text = textInput.value;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    charCount.textContent = `${text.length} characters · ${words} words`;
+});
+
+function loadSampleText() {
+    textInput.value = `The quantum mechanical model of the atom fundamentally transformed our understanding of subatomic particles and their behavior. Unlike classical physics, which treats particles as discrete objects with definite positions and velocities, quantum mechanics introduces the concept of wave-particle duality. Electrons, rather than orbiting the nucleus in fixed paths, exist in probabilistic clouds described by complex mathematical wave functions. The Heisenberg uncertainty principle further complicates matters by establishing that one cannot simultaneously know both the exact position and momentum of a particle with arbitrary precision. These revolutionary ideas challenged centuries of deterministic thinking and continue to perplex even seasoned physicists today.`;
+    textInput.dispatchEvent(new Event('input'));
+}
+
+async function analyzeText() {
+    const text = textInput.value.trim();
+    if (!text) { alert('Please enter some text to analyze.'); return; }
+    if (text.length < 20) { alert('Please enter at least 20 characters.'); return; }
+
+    document.getElementById('loading').classList.add('active');
+    document.getElementById('analyzeBtn').disabled = true;
+
+    try {
+        const res = await fetch('/api/analyze-text', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text})
+        });
+        const data = await res.json();
+
+        if (data.analysis.error) { alert(data.analysis.error); return; }
+
+        renderResults(data);
+        document.getElementById('results').classList.remove('hidden');
+
+        // Store for report generation
+        window.lastAnalysis = data;
+
+    } catch(e) {
+        alert('Error analyzing text: ' + e.message);
+    } finally {
+        document.getElementById('loading').classList.remove('active');
+        document.getElementById('analyzeBtn').disabled = false;
+    }
+}
+
+function renderResults(data) {
+    const a = data.analysis;
+
+    // Metrics grid
+    document.getElementById('metricsGrid').innerHTML = `
+        <div class="metric-card">
+            <div class="metric-value" style="color: ${a.difficulty_color}">${a.flesch_score}</div>
+            <div class="metric-label">Flesch Score</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">${a.grade_level}</div>
+            <div class="metric-label">Grade Level</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">${a.word_count}</div>
+            <div class="metric-label">Words</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">${a.difficult_words_pct}%</div>
+            <div class="metric-label">Complex Words</div>
+        </div>
+    `;
+
+    // Difficulty card
+    const badgeClass = a.difficulty === 'Easy' ? 'badge-easy' : a.difficulty === 'Medium' ? 'badge-medium' : 'badge-hard';
+    document.getElementById('difficultyCard').innerHTML = `
+        <div class="badge ${badgeClass}" style="font-size: 18px; padding: 8px 24px; margin-bottom: 12px;">
+            ${a.difficulty === 'Easy' ? '✅' : a.difficulty === 'Medium' ? '⚠️' : '🔴'} ${a.difficulty}
+        </div>
+        <p style="color: var(--text-secondary); font-size: 14px;">${a.difficulty_description}</p>
+    `;
+
+    // Heatmap
+    const heatmapHtml = data.heatmap.map(w =>
+        `<span class="heatmap-word" style="background: ${w.color}20; color: ${w.color}; border-bottom: 2px solid ${w.color}" title="Difficulty: ${w.score}/100">${w.word}</span> `
+    ).join('');
+    document.getElementById('heatmapContainer').innerHTML = heatmapHtml;
+
+    // Sentences
+    const sentHtml = data.sentences.map(s => `
+        <div class="sentence-item" style="border-left-color: ${s.color}">
+            <div class="sentence-text">${s.sentence}</div>
+            <div class="sentence-meta">
+                <span>Score: ${s.difficulty_score}/100</span>
+                <span>${s.word_count} words</span>
+                <span>Avg syllables: ${s.avg_syllables}</span>
+                <span class="badge badge-${s.level.toLowerCase()}" style="font-size: 11px;">${s.level}</span>
+            </div>
+        </div>
+    `).join('');
+    document.getElementById('sentencesContainer').innerHTML = sentHtml;
+
+    // Complex words table
+    const tbody = document.querySelector('#wordsTable tbody');
+    tbody.innerHTML = data.complex_words.map((w, i) => `
+        <tr>
+            <td>${i + 1}</td>
+            <td><strong>${w.word}</strong></td>
+            <td>${w.syllables}</td>
+            <td style="font-family: var(--font-mono);">${w.frequency}</td>
+            <td>
+                <div class="difficulty-bar" style="width: 100px;">
+                    <div class="difficulty-bar-fill" style="width: ${w.difficulty_score}%; background: ${w.difficulty_score > 70 ? 'var(--red)' : w.difficulty_score > 40 ? 'var(--yellow)' : 'var(--green)'}"></div>
+                </div>
+                <span style="font-size: 12px; font-family: var(--font-mono); margin-left: 8px;">${w.difficulty_score}</span>
+            </td>
+            <td style="font-size: 12px; color: var(--text-secondary);">${w.reason}</td>
+        </tr>
+    `).join('');
+
+    // All metrics
+    document.getElementById('readabilityMetrics').innerHTML = `
+        <table class="words-table">
+            <tr><td>Flesch Reading Ease</td><td style="font-family: var(--font-mono);">${a.flesch_score}</td></tr>
+            <tr><td>Flesch-Kincaid Grade</td><td style="font-family: var(--font-mono);">${a.flesch_kincaid_grade}</td></tr>
+            <tr><td>Gunning Fog Index</td><td style="font-family: var(--font-mono);">${a.gunning_fog}</td></tr>
+            <tr><td>SMOG Index</td><td style="font-family: var(--font-mono);">${a.smog_index}</td></tr>
+            <tr><td>Coleman-Liau Index</td><td style="font-family: var(--font-mono);">${a.coleman_liau}</td></tr>
+            <tr><td>ARI</td><td style="font-family: var(--font-mono);">${a.ari}</td></tr>
+            <tr><td>Dale-Chall Score</td><td style="font-family: var(--font-mono);">${a.dale_chall}</td></tr>
+        </table>
+    `;
+    document.getElementById('textStats').innerHTML = `
+        <table class="words-table">
+            <tr><td>Word Count</td><td style="font-family: var(--font-mono);">${a.word_count}</td></tr>
+            <tr><td>Sentence Count</td><td style="font-family: var(--font-mono);">${a.sentence_count}</td></tr>
+            <tr><td>Syllable Count</td><td style="font-family: var(--font-mono);">${a.syllable_count}</td></tr>
+            <tr><td>Avg Sentence Length</td><td style="font-family: var(--font-mono);">${a.avg_sentence_length} words</td></tr>
+            <tr><td>Avg Syllables/Word</td><td style="font-family: var(--font-mono);">${a.avg_syllables_per_word}</td></tr>
+            <tr><td>Difficult Words</td><td style="font-family: var(--font-mono);">${a.difficult_words_count} (${a.difficult_words_pct}%)</td></tr>
+            <tr><td>Grade Level</td><td style="font-family: var(--font-mono);">${a.grade_level}</td></tr>
+        </table>
+    `;
+}
+
+function switchTab(tabId, btn) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.remove('hidden');
+    btn.classList.add('active');
+}
+</script>
+{% endblock %}

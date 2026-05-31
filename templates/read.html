@@ -1,0 +1,1301 @@
+{% extends 'base.html' %}
+{% block title %}Reading Session — TextDifficulty.ai{% endblock %}
+
+{% block content %}
+<div class="section-header fade-in">
+    <h1>📷 Live Reading Session</h1>
+    <p>Read text on screen while the camera analyzes your facial expressions in real-time.</p>
+</div>
+
+<!-- Setup Phase -->
+<div id="setupPhase">
+    <div class="card fade-in" style="margin-bottom: 24px;">
+        <div class="card-header"><h3>1. Enter text to read</h3></div>
+        <textarea id="readText" placeholder="Paste the text you want to read during the session..." style="min-height: 120px;"></textarea>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button class="btn btn-secondary" onclick="loadReadSample('easy')">Easy Sample</button>
+            <button class="btn btn-secondary" onclick="loadReadSample('medium')">Medium Sample</button>
+            <button class="btn btn-secondary" onclick="loadReadSample('hard')">Hard Sample</button>
+        </div>
+    </div>
+
+    <div class="card fade-in" style="margin-bottom: 24px;">
+        <div class="card-header"><h3>2. Enable Camera</h3></div>
+        <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">
+            Your camera is used locally to detect facial expressions. No video is stored or sent to any server — only facial landmark coordinates are processed.
+        </p>
+        <button class="btn btn-primary" id="cameraBtn" onclick="startCamera()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Enable Camera
+        </button>
+        <div id="cameraPreview" class="hidden" style="margin-top: 16px; max-width: 320px;">
+            <div class="webcam-container">
+                <video id="previewVideo" autoplay playsinline muted></video>
+            </div>
+            <p style="color: var(--green); font-size: 13px; margin-top: 8px;">✅ Camera active</p>
+        </div>
+    </div>
+
+    <div class="card fade-in" style="margin-bottom: 24px;">
+        <div class="card-header"><h3>3. AI Word Simplification</h3></div>
+        <p style="color: var(--green); font-size: 14px;">
+            ✅ AI simplification is enabled. Hard words and sentences will be simplified after the session.
+        </p>
+        <input type="hidden" id="apiKeyInput" value="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">
+    </div>
+
+    <button class="btn btn-success" id="startBtn" onclick="startSession()" disabled style="width: 100%; justify-content: center; padding: 14px; font-size: 16px;">
+        ▶ Start Reading Session
+    </button>
+</div>
+
+<!-- Session Phase -->
+<div id="sessionPhase" class="hidden">
+    <!-- Main 3-column layout: Camera | Reading Text | Stats -->
+    <div style="display: grid; grid-template-columns: 300px 1fr 280px; gap: 16px; height: calc(100vh - 120px);">
+
+        <!-- LEFT: Camera + Load Bar -->
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="card" style="padding: 12px; flex-shrink: 0;">
+                <div class="webcam-container" id="sessionCam" style="position: relative; aspect-ratio: 4/3;">
+                    <video id="sessionVideo" autoplay playsinline muted></video>
+                    <canvas id="landmarkCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: scaleX(-1);"></canvas>
+                    <div class="webcam-overlay">
+                        <div class="emotion-indicator" id="emotionBadge" style="background: rgba(245,158,11,0.8); font-size: 12px; padding: 4px 10px;">
+                            😌 Easy
+                        </div>
+                        <div class="face-status" id="faceStatus" style="font-size: 11px; padding: 4px 10px;">🔍 Detecting...</div>
+                    </div>
+                </div>
+
+                <!-- Feature Values -->
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; margin-top: 6px; font-size: 9px; font-family: var(--font-mono); color: var(--text-muted);">
+                    <div style="text-align:center;"><span id="featEAR">-</span><br>Eye</div>
+                    <div style="text-align:center;"><span id="featMAR">-</span><br>Brow Δ%</div>
+                    <div style="text-align:center;"><span id="featSmile">-</span><br>EAR Δ</div>
+                    <div style="text-align:center;"><span id="featBrow">-</span><br>Brow</div>
+                    <div style="text-align:center;"><span id="featFurrow">-</span><br>Dist</div>
+                </div>
+            </div>
+
+            <!-- Cognitive Load Bar -->
+            <div class="card" style="padding: 12px;">
+                <div class="cognitive-bar-label" style="font-size: 12px;">
+                    <span>Cognitive Load</span>
+                    <span id="loadValue">50%</span>
+                </div>
+                <div class="cognitive-bar">
+                    <div class="cognitive-bar-fill" id="loadBar" style="width: 50%; background: var(--yellow);"></div>
+                </div>
+            </div>
+
+            <!-- Difficulty Timeline -->
+            <div class="card" style="padding: 12px; flex: 1; min-height: 0;">
+                <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🔄 Difficulty Timeline</div>
+                <div class="timeline-bar" id="emotionTimeline" style="height: 30px;"></div>
+                <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--text-muted);">
+                    <span>Start</span><span>Current</span>
+                </div>
+            </div>
+
+            <button class="btn btn-danger" onclick="stopSession()" style="width: 100%; justify-content: center; font-size: 13px; padding: 8px;">⏹ Stop Session</button>
+        </div>
+
+        <!-- CENTER: Reading Text (biggest area) -->
+        <div class="card" style="display: flex; flex-direction: column; overflow: hidden;">
+            <div class="card-header" style="flex-shrink: 0;">
+                <h3>📖 Reading Text</h3>
+                <span style="font-size: 13px; color: var(--text-secondary); margin-left: auto;" id="readProgress">0%</span>
+            </div>
+            <!-- Start Reading Button -->
+            <div id="startReadingBtn" class="hidden" style="padding: 16px; flex-shrink: 0; text-align: center; border-bottom: 1px solid var(--border);">
+                <p id="calibrationMsg" style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">Keep a relaxed, neutral face and press Start Reading when ready.</p>
+                <button class="btn btn-success" onclick="startReading()" style="font-size: 16px; padding: 12px 40px;">
+                    ▶ Start Reading
+                </button>
+            </div>
+            <div class="teleprompter" id="teleprompter" style="flex: 1; max-height: none; font-size: 20px; line-height: 2.2; overflow-y: auto;"></div>
+        </div>
+
+        <!-- RIGHT: Live Stats -->
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="card" style="padding: 12px;">
+                <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📊 Live Stats</div>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <div class="metric-card" style="padding: 10px;">
+                        <div class="metric-value" id="liveEmotion" style="font-size: 22px;">—</div>
+                        <div class="metric-label" style="font-size: 10px;">Difficulty Level</div>
+                    </div>
+                    <div class="metric-card" style="padding: 10px;">
+                        <div class="metric-value" id="liveDifficulty" style="font-size: 12px;">—</div>
+                        <div class="metric-label" style="font-size: 10px;">Cognitive State</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div class="metric-card" style="padding: 8px;">
+                            <div class="metric-value" id="liveFrames" style="font-size: 18px;">0</div>
+                            <div class="metric-label" style="font-size: 9px;">Frames</div>
+                        </div>
+                        <div class="metric-card" style="padding: 8px;">
+                            <div class="metric-value" id="liveTime" style="font-size: 18px;">0:00</div>
+                            <div class="metric-label" style="font-size: 9px;">Time</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Signals Panel -->
+            <div class="card" style="padding: 12px;">
+                <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🧠 Active Signals</div>
+                <div id="activeSignalsPanel" style="font-size: 13px; color: var(--text-secondary);">
+                    <p style="color: var(--green);">😌 Relaxed</p>
+                </div>
+            </div>
+
+            <!-- Fatigue Alert (live) -->
+            <div class="card" id="fatigueCard" style="padding: 12px; flex: 1; border: 1px solid var(--border);">
+                <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">
+                    <span id="fatigueBrain" style="display:inline-block;">🧠</span> Cognitive Fatigue
+                </div>
+                <div id="fatigueStatus" style="font-size: 12px; color: var(--text-secondary);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                        <span>Hard streak</span>
+                        <span id="fatigueStreak" style="font-family: var(--font-mono); font-weight: 700;">0</span>
+                    </div>
+                    <div style="height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                        <div id="fatigueBar" style="height:100%; width:0%; background: var(--green); transition: width .3s, background .3s;"></div>
+                    </div>
+                    <p id="fatigueMsg" style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">All good — no fatigue detected.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quiz Phase -->
+<div id="quizPhase" class="hidden">
+    <div class="section-header fade-in">
+        <h2>📝 <span id="quizTitle">Comprehension Check</span></h2>
+        <p id="quizSubtitle">Answer the following questions to assess your understanding of the text.</p>
+    </div>
+
+    <!-- Loading state -->
+    <div id="quizLoading" class="card fade-in" style="text-align: center; padding: 48px;">
+        <div class="spinner" style="width: 48px; height: 48px; margin: 0 auto 16px;"></div>
+        <p style="font-size: 16px; color: var(--text-secondary);" id="quizLoadingMsg">Generating comprehension questions...</p>
+    </div>
+
+    <!-- Questions -->
+    <div id="quizQuestions" class="hidden"></div>
+
+    <!-- Submit -->
+    <div id="quizSubmitArea" class="hidden" style="margin-top: 20px;">
+        <button class="btn btn-success" id="quizSubmitBtn" onclick="submitQuiz()" style="width: 100%; justify-content: center; padding: 14px; font-size: 16px;">
+            ✅ <span id="quizSubmitText">Submit Answers</span>
+        </button>
+    </div>
+
+    <!-- Level Result -->
+    <div id="quizResult" class="hidden" style="margin-top: 24px;">
+        <div class="card fade-in" style="text-align: center; padding: 40px; border: 2px solid var(--border);" id="quizResultCard">
+            <div id="quizLevelIcon" style="font-size: 64px; margin-bottom: 16px;">🏆</div>
+            <div id="quizLevelBadge" style="display: inline-block; padding: 10px 32px; border-radius: 50px; font-size: 24px; font-weight: 700; margin-bottom: 16px;"></div>
+            <div id="quizScoreText" style="font-size: 18px; color: var(--text-secondary); margin-bottom: 20px;"></div>
+            <div id="quizMessage" style="font-size: 16px; line-height: 1.8; color: var(--text-primary); margin-bottom: 12px;"></div>
+            <div id="quizSuggestion" style="font-size: 14px; color: var(--text-secondary); padding: 12px; background: var(--bg-input); border-radius: 8px; margin-bottom: 24px;"></div>
+
+            <!-- Answer Review -->
+            <div id="quizAnswerReview" style="text-align: left; margin-top: 20px;"></div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button class="btn btn-primary" onclick="showResultsAfterQuiz()" style="flex: 1; justify-content: center; padding: 14px; font-size: 15px;">
+                📊 <span id="viewResultsBtnText">View Full Session Results</span>
+            </button>
+            <button class="btn btn-secondary" onclick="resetSession()" style="justify-content: center; padding: 14px; font-size: 15px;">
+                🔄 <span id="newSessionBtnText">New Session</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Results Phase -->
+<div id="resultsPhase" class="hidden">
+    <div class="section-header">
+        <h2>📋 Session Results</h2>
+        <p>Here's the analysis of your reading session.</p>
+    </div>
+
+    <!-- Fatigue Alert (top, prominent if triggered) -->
+    <div id="fatigueAlertBanner" style="display:none; margin-bottom: 20px;"></div>
+
+    <!-- KPI Row -->
+    <div class="grid-4" style="margin-bottom: 20px;" id="resultMetrics"></div>
+
+    <!-- Analytics Row: Stability + Reader Profile + Match Donut -->
+    <div class="dashboard-row" style="margin-bottom: 20px;" id="analyticsRow"></div>
+
+    <!-- Correlation -->
+    <div class="card" style="margin-bottom: 20px;" id="correlationCard"></div>
+
+    <!-- Cognitive Load Signals (donuts) -->
+    <div class="card" style="margin-bottom: 20px;">
+        <div class="card-header"><h3>🧠 Cognitive Load Signals</h3></div>
+        <div id="emotionDistribution" class="signals-donut-grid"></div>
+    </div>
+
+    <!-- AI Simplification Results -->
+    <div class="card" style="margin-bottom: 24px;">
+        <div class="card-header"><h3>🤖 AI Smart Simplification</h3></div>
+        <div id="simplificationPanel">
+            <p style="color: var(--text-muted);">Waiting for session to end...</p>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 12px;">
+        <button class="btn btn-primary" onclick="downloadReport()">📄 Download PDF Report</button>
+        <button class="btn btn-secondary" onclick="resetSession()">🔄 New Session</button>
+    </div>
+</div>
+
+<canvas id="captureCanvas" style="display:none;"></canvas>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let stream = null;
+let sessionActive = false;
+let sessionInterval = null;
+let wordAdvanceInterval = null;
+let frameCount = 0;
+let startTime = 0;
+let facialResults = [];
+let nlpResults = null;
+let currentWordIndex = 0;
+let words = [];
+let readingStarted = false;
+let hardWordsFromFace = new Set();  // words where face showed Hard
+let hardSentencesFromFace = new Set();  // sentences where face showed Hard
+let originalText = '';  // store the full text for sentence lookup
+let liveHardStreak = 0;
+const FATIGUE_THRESHOLD = 10;
+
+const DIFF_COLORS = {
+    'Easy': '#22c55e', 'Medium': '#f59e0b', 'Hard': '#ef4444', 'Calibrating': '#3b82f6'
+};
+const DIFF_EMOJI = {
+    'Easy': '😌', 'Medium': '🤔', 'Hard': '😰', 'Calibrating': '⏳'
+};
+
+const SAMPLES = {
+    easy: "The sun was shining bright in the clear blue sky. Birds were singing in the tall trees. The children ran and played in the big green park. They were happy and full of joy. The dog chased a red ball across the soft grass.",
+    medium: "Climate change represents one of the most pressing environmental challenges facing our planet today. Rising global temperatures are causing significant shifts in weather patterns, leading to more frequent extreme weather events. Scientists emphasize the critical importance of reducing carbon emissions to mitigate the long-term consequences for ecosystems and human societies.",
+    hard: "The epistemological implications of quantum entanglement challenge our fundamental presuppositions about locality and realism in physical theories. Bell's theorem demonstrates that no local hidden variable theory can reproduce all predictions of quantum mechanics, necessitating a reconceptualization of causality that transcends classical spatiotemporal frameworks and undermines deterministic interpretations of microphysical phenomena."
+};
+
+function loadReadSample(level) {
+    document.getElementById('readText').value = SAMPLES[level];
+}
+
+async function startCamera() {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({video: {width: {ideal: 640}, height: {ideal: 480}, facingMode: 'user'}, audio: false});
+        document.getElementById('previewVideo').srcObject = stream;
+        document.getElementById('cameraPreview').classList.remove('hidden');
+        document.getElementById('cameraBtn').textContent = '✅ Camera Active';
+        document.getElementById('cameraBtn').disabled = true;
+        document.getElementById('startBtn').disabled = false;
+    } catch(e) {
+        alert('Camera access denied. Please allow camera access to use reading sessions.');
+    }
+}
+
+async function startSession() {
+    const text = document.getElementById('readText').value.trim();
+    if (!text) { alert('Please enter text to read.'); return; }
+    if (!stream) { alert('Please enable camera first.'); return; }
+
+    // Analyze text with NLP
+    try {
+        const res = await fetch('/api/analyze-text', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text})
+        });
+        const data = await res.json();
+        nlpResults = data.analysis;
+        window.lastAnalysis = data;
+    } catch(e) {
+        alert('Error analyzing text: ' + e.message);
+        return;
+    }
+
+    // Setup teleprompter (show text but don't advance yet)
+    words = text.split(/\s+/);
+    originalText = text;
+    hardWordsFromFace = new Set();
+    hardSentencesFromFace = new Set();
+    const teleprompter = document.getElementById('teleprompter');
+    teleprompter.innerHTML = words.map((w, i) =>
+        `<span class="word" id="word-${i}">${w}</span> `
+    ).join('');
+    currentWordIndex = 0;
+
+    // Detect Arabic and set RTL
+    const isArabic = /[\u0600-\u06FF]/.test(text);
+    teleprompter.style.direction = isArabic ? 'rtl' : 'ltr';
+    teleprompter.style.textAlign = isArabic ? 'right' : 'left';
+
+    // Switch to session phase
+    document.getElementById('setupPhase').classList.add('hidden');
+    document.getElementById('sessionPhase').classList.remove('hidden');
+
+    // Set video stream (camera visible but NO detection yet)
+    document.getElementById('sessionVideo').srcObject = stream;
+
+    sessionActive = false;
+    readingStarted = false;
+    facialResults = [];
+    frameCount = 0;
+
+    // Show "Start Reading" button — NO detection running yet
+    document.getElementById('startReadingBtn').classList.remove('hidden');
+    document.getElementById('calibrationMsg').textContent = 'Keep a relaxed, neutral face and press Start Reading when ready.';
+}
+
+async function startReading() {
+    // Disable button immediately
+    document.getElementById('startReadingBtn').querySelector('button').disabled = true;
+    document.getElementById('calibrationMsg').textContent = '⏳ Calibrating your neutral face... hold still...';
+
+    // Reset baseline
+    await fetch('/api/reset-baseline', {method: 'POST'});
+
+    // Start detection — first 5 frames will calibrate
+    sessionActive = true;
+    startTime = Date.now();
+
+    // Run calibration (5 frames at 1s interval)
+    sessionInterval = setInterval(captureAndAnalyze, 1000);
+    captureAndAnalyze();
+
+    // Wait for calibration to finish (5 seconds), then start reading
+    setTimeout(() => {
+        readingStarted = true;
+        document.getElementById('startReadingBtn').classList.add('hidden');
+
+        // Start word advancement
+        const wordInterval = Math.max(500, Math.min(1500, 60000 / words.length));
+        wordAdvanceInterval = setInterval(() => {
+            if (!sessionActive) return;
+            advanceWord();
+            if (currentWordIndex >= words.length) {
+                stopSession();
+            }
+        }, wordInterval);
+    }, 6000); // 6 seconds = 5 calibration frames + 1s buffer
+}
+
+function advanceWord() {
+    if (currentWordIndex > 0) {
+        const prev = document.getElementById(`word-${currentWordIndex - 1}`);
+        if (prev) { prev.classList.remove('current'); prev.classList.add('read'); }
+    }
+    if (currentWordIndex < words.length) {
+        const curr = document.getElementById(`word-${currentWordIndex}`);
+        if (curr) {
+            curr.classList.add('current');
+            // Scroll only inside the teleprompter container, NOT the whole page
+            const container = document.getElementById('teleprompter');
+            const containerRect = container.getBoundingClientRect();
+            const wordRect = curr.getBoundingClientRect();
+            // Only scroll if word is below visible area of teleprompter
+            if (wordRect.bottom > containerRect.bottom - 20 || wordRect.top < containerRect.top + 20) {
+                container.scrollTop += wordRect.top - containerRect.top - containerRect.height / 2;
+            }
+        }
+        currentWordIndex++;
+        document.getElementById('readProgress').textContent =
+            Math.round((currentWordIndex / words.length) * 100) + '%';
+    }
+}
+
+async function captureAndAnalyze() {
+    if (!sessionActive) return;
+
+    const video = document.getElementById('sessionVideo');
+    const canvas = document.getElementById('captureCanvas');
+    // Resize to 480px wide for balance of speed + accuracy
+    const scale = 480 / (video.videoWidth || 640);
+    canvas.width = 480;
+    canvas.height = Math.round((video.videoHeight || 480) * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const frameData = canvas.toDataURL('image/jpeg', 0.85);
+
+    try {
+        const res = await fetch('/api/detect-emotion', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({frame: frameData})
+        });
+        const result = await res.json();
+
+        frameCount++;
+        facialResults.push(result);
+        updateSessionUI(result);
+
+        // Track which word/sentence triggered Hard face
+        if (result.difficulty === 'Hard' && readingStarted && currentWordIndex > 0) {
+            // Record the current word
+            const wordIdx = Math.max(0, currentWordIndex - 1);
+            if (words[wordIdx]) {
+                // Clean word (remove punctuation)
+                const cleanWord = words[wordIdx].replace(/[.,!?؟;:'"()\[\]{}]/g, '').trim();
+                if (cleanWord.length >= 3) {
+                    hardWordsFromFace.add(cleanWord);
+                }
+                // Also add surrounding words (±2) since reaction is delayed
+                for (let offset = -2; offset <= 2; offset++) {
+                    const idx = wordIdx + offset;
+                    if (idx >= 0 && idx < words.length) {
+                        const w = words[idx].replace(/[.,!?؟;:'"()\[\]{}]/g, '').trim();
+                        if (w.length >= 3) hardWordsFromFace.add(w);
+                    }
+                }
+            }
+            // Find which sentence contains this word position
+            const sentences = originalText.split(/[.!?؟]+/).map(s => s.trim()).filter(s => s.length > 5);
+            let charPos = 0;
+            const targetCharPos = words.slice(0, wordIdx + 1).join(' ').length;
+            for (const sent of sentences) {
+                charPos += sent.length + 1;
+                if (charPos >= targetCharPos - 20) {
+                    hardSentencesFromFace.add(sent);
+                    break;
+                }
+            }
+        }
+    } catch(e) {
+        console.error('Frame analysis error:', e);
+        document.getElementById('faceStatus').textContent = '⚠️ Error: ' + e.message;
+    }
+
+    // Update time
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    document.getElementById('liveTime').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function updateSessionUI(result) {
+    const diff = result.difficulty || 'Easy';
+    const color = DIFF_COLORS[diff] || '#f59e0b';
+    const emoji = DIFF_EMOJI[diff] || '🤔';
+    const state = result.cognitive_state || diff;
+
+    // Emotion badge → now shows difficulty
+    document.getElementById('emotionBadge').innerHTML = `${emoji} ${diff}`;
+    document.getElementById('emotionBadge').style.background = color + 'cc';
+
+    // Face status
+    document.getElementById('faceStatus').textContent =
+        result.face_detected ? '✅ Face detected' : '❌ No face';
+
+    // Live stats
+    document.getElementById('liveEmotion').textContent = emoji + ' ' + diff;
+    document.getElementById('liveEmotion').style.color = color;
+    document.getElementById('liveDifficulty').textContent = state.split('(')[0].trim();
+    document.getElementById('liveDifficulty').style.color = color;
+    document.getElementById('liveDifficulty').style.fontSize = '14px';
+    document.getElementById('liveFrames').textContent = frameCount;
+
+    // Cognitive load bar
+    const score = result.difficulty_score || 50;
+    document.getElementById('loadBar').style.width = score + '%';
+    document.getElementById('loadBar').style.background = color;
+    document.getElementById('loadValue').textContent = score + '%';
+
+    // Feature values
+    if (result.features) {
+        document.getElementById('featEAR').textContent = result.features.eye_openness ?? '-';
+        document.getElementById('featMAR').textContent = result.deltas?.brow_h ?? '-';
+        document.getElementById('featSmile').textContent = result.deltas?.ear ?? '-';
+        document.getElementById('featBrow').textContent = result.features.brow_height ?? '-';
+        document.getElementById('featFurrow').textContent = result.features.brow_furrow ?? '-';
+    }
+
+    // Draw landmarks on canvas
+    drawLandmarks(result, color);
+
+    // Active Signals Panel (right side)
+    const sigPanel = document.getElementById('activeSignalsPanel');
+    if (result.signals && sigPanel) {
+        const sigInfo = {
+            eyes_squinting: {icon: '👀', label: 'Eyes Squinting', desc: 'Concentrating hard'},
+            brows_raised: {icon: '⬆️', label: 'Brows Raised', desc: 'Confused by content'},
+            brows_furrowed: {icon: '😤', label: 'Brows Furrowed', desc: 'Struggling with text'},
+
+        };
+        const active = Object.entries(result.signals).filter(([k,v]) => v);
+        if (active.length === 0) {
+            sigPanel.innerHTML = '<p style="color: var(--green);">😌 Relaxed — no difficulty signals</p>';
+        } else {
+            sigPanel.innerHTML = active.map(([sig]) => {
+                const s = sigInfo[sig] || {icon: '●', label: sig, desc: ''};
+                return `<div style="margin-bottom: 8px; padding: 6px 8px; background: var(--red-bg); border-radius: 6px; border-left: 3px solid var(--red);">
+                    <div style="font-weight: 600; font-size: 13px;">${s.icon} ${s.label}</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">${s.desc}</div>
+                </div>`;
+            }).join('');
+        }
+    }
+
+    // Live fatigue tracking
+    if (result.difficulty === 'Hard' && result.face_detected) {
+        liveHardStreak++;
+    } else if (result.face_detected) {
+        liveHardStreak = 0;
+    }
+    updateFatigueUI();
+
+    // Timeline
+    const timeline = document.getElementById('emotionTimeline');
+    const segment = document.createElement('div');
+    segment.className = 'timeline-segment';
+    segment.style.background = color;
+    segment.style.flex = '1';
+    segment.title = state;
+    segment.textContent = emoji;
+    timeline.appendChild(segment);
+}
+
+function updateFatigueUI() {
+    const streakEl = document.getElementById('fatigueStreak');
+    const barEl = document.getElementById('fatigueBar');
+    const msgEl = document.getElementById('fatigueMsg');
+    const brainEl = document.getElementById('fatigueBrain');
+    const cardEl = document.getElementById('fatigueCard');
+    if (!streakEl) return;
+
+    streakEl.textContent = liveHardStreak;
+    const pct = Math.min(100, (liveHardStreak / FATIGUE_THRESHOLD) * 100);
+    barEl.style.width = pct + '%';
+
+    if (liveHardStreak >= FATIGUE_THRESHOLD) {
+        barEl.style.background = 'var(--red)';
+        brainEl.textContent = '🧠';
+        brainEl.classList.add('pulse');
+        brainEl.style.color = 'var(--red)';
+        cardEl.style.borderColor = 'var(--red)';
+        cardEl.style.background = 'rgba(239,68,68,0.08)';
+        msgEl.style.color = 'var(--red)';
+        msgEl.textContent = '⚠️ High fatigue! Recommend simplifying this paragraph or taking a short break.';
+    } else if (liveHardStreak >= FATIGUE_THRESHOLD / 2) {
+        barEl.style.background = 'var(--yellow)';
+        brainEl.classList.remove('pulse');
+        brainEl.style.color = 'var(--yellow)';
+        cardEl.style.borderColor = 'var(--yellow)';
+        cardEl.style.background = '';
+        msgEl.style.color = 'var(--yellow)';
+        msgEl.textContent = 'Rising cognitive load — keep an eye on the reader.';
+    } else {
+        barEl.style.background = 'var(--green)';
+        brainEl.classList.remove('pulse');
+        brainEl.style.color = '';
+        cardEl.style.borderColor = 'var(--border)';
+        cardEl.style.background = '';
+        msgEl.style.color = 'var(--text-muted)';
+        msgEl.textContent = 'All good — no fatigue detected.';
+    }
+}
+
+function drawLandmarks(result, color) {
+    const canvas = document.getElementById('landmarkCanvas');
+    const video = document.getElementById('sessionVideo');
+    if (!canvas || !video) return;
+
+    // Canvas must match video's native resolution
+    const vw = video.videoWidth || 640;
+    const vh = video.videoHeight || 480;
+    canvas.width = vw;
+    canvas.height = vh;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, vw, vh);
+
+    if (!result.face_detected || !result.landmarks) return;
+
+    const lm = result.landmarks;
+
+    // The landmarks were computed on a 480px-wide capture frame
+    // We need to scale them to match the video's native resolution
+    // Also mirror X because canvas has CSS scaleX(-1)
+    const captureW = 480;
+    const captureH = Math.round((vh / vw) * 480);
+    const scaleX = vw / captureW;
+    const scaleY = vh / captureH;
+
+    // Transform a point: scale from capture coords to video coords
+    function tx(p) {
+        return { x: p.x * scaleX, y: p.y * scaleY };
+    }
+
+    // Transform array of points
+    function txAll(points) {
+        if (!points) return [];
+        return points.map(tx);
+    }
+
+    // Helper: draw connected polygon
+    function drawPoly(points, strokeColor, fillColor, lineWidth) {
+        const pts = txAll(points);
+        if (pts.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+            ctx.lineTo(pts[i].x, pts[i].y);
+        }
+        ctx.closePath();
+        if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+        if (strokeColor) {
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = lineWidth || 1.5;
+            ctx.stroke();
+        }
+    }
+
+    // Helper: draw dots
+    function drawDots(points, dotColor, size) {
+        const pts = txAll(points);
+        ctx.fillStyle = dotColor;
+        for (const p of pts) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, size || 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // Face oval
+    drawPoly(lm.face_oval, color + '88', null, 2);
+
+    // Eyes
+    drawPoly(lm.left_eye, '#00ffff', 'rgba(0, 255, 255, 0.1)', 1.5);
+    drawPoly(lm.right_eye, '#00ffff', 'rgba(0, 255, 255, 0.1)', 1.5);
+
+    // Eyebrows
+    drawPoly(lm.left_eyebrow, '#ffff00', null, 2);
+    drawPoly(lm.right_eyebrow, '#ffff00', null, 2);
+
+    // Key landmark dots
+    drawDots(lm.left_eye, '#00ffff', 2.5);
+    drawDots(lm.right_eye, '#00ffff', 2.5);
+    drawDots(lm.left_eyebrow, '#ffff00', 2.5);
+    drawDots(lm.right_eyebrow, '#ffff00', 2.5);
+
+    // Bounding box
+    if (result.bbox) {
+        const b = result.bbox;
+        const bx = b.x * scaleX;
+        const by = b.y * scaleY;
+        const bw = b.w * scaleX;
+        const bh = b.h * scaleY;
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 4]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
+
+        // Difficulty label — flip text so it reads correctly on mirrored canvas
+        const label = `${result.difficulty} (${result.difficulty_score}%)`;
+        ctx.save();
+        ctx.translate(bx + bw / 2, by - 13);
+        ctx.scale(-1, 1);
+        ctx.fillStyle = color;
+        ctx.fillRect(-65, -11, 130, 22);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, 0, 5);
+        ctx.restore();
+
+        // Signal indicators
+        if (result.signals) {
+            let sy = by + 5;
+            const sigInfo = {eyes_squinting:'👀 Squint', brows_raised:'⬆ Brows Up', brows_furrowed:'⬇ Furrow'};
+            for (const [sig, active] of Object.entries(result.signals)) {
+                if (active) {
+                    ctx.save();
+                    ctx.translate(bx + bw + 10, sy);
+                    ctx.scale(-1, 1);
+                    ctx.fillStyle = '#ef4444';
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.fillText(sigInfo[sig] || sig, 0, 0);
+                    ctx.restore();
+                    sy += 16;
+                }
+            }
+        }
+    }
+}
+
+async function stopSession() {
+    sessionActive = false;
+    if (sessionInterval) clearInterval(sessionInterval);
+    if (wordAdvanceInterval) clearInterval(wordAdvanceInterval);
+
+    // Run correlation in background
+    runCorrelationAndSimplification();
+
+    // Show quiz phase
+    document.getElementById('sessionPhase').classList.add('hidden');
+    startQuizPhase();
+}
+
+async function runCorrelationAndSimplification() {
+    // Run correlation
+    try {
+        const res = await fetch('/api/correlate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({nlp_results: nlpResults, facial_results: facialResults})
+        });
+        const correlation = await res.json();
+        window.sessionCorrelation = correlation;
+    } catch(e) {
+        console.error('Correlation error:', e);
+        window.sessionCorrelation = {error: 'Could not compute correlation'};
+    }
+
+    // AI Simplification — ONLY for words/sentences where face showed Hard
+    const apiKey = document.getElementById('apiKeyInput')?.value?.trim();
+    if (apiKey) {
+        const faceHardWords = Array.from(hardWordsFromFace).slice(0, 20);
+        const faceHardSentences = Array.from(hardSentencesFromFace).slice(0, 5);
+
+        if (faceHardWords.length > 0 || faceHardSentences.length > 0) {
+            document.getElementById('simplificationPanel').innerHTML =
+                `<p style="color: var(--accent);"><span class="spinner" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:8px;"></span> AI is simplifying ${faceHardWords.length} words and ${faceHardSentences.length} sentences where you struggled...</p>`;
+
+            try {
+                const simpRes = await fetch('/api/simplify', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({hard_words: faceHardWords, hard_sentences: faceHardSentences, api_key: apiKey, language: nlpResults?.language || 'en'})
+                });
+                const simpData = await simpRes.json();
+                window.lastSimplification = simpData;
+                renderSimplifications(simpData);
+            } catch(e) {
+                document.getElementById('simplificationPanel').innerHTML =
+                    `<p style="color: var(--red);">AI simplification failed: ${e.message}</p>`;
+            }
+        } else {
+            document.getElementById('simplificationPanel').innerHTML =
+                '<p style="color: var(--green);">✅ No difficulty detected from your face — you read comfortably through the entire text!</p>';
+        }
+    } else if (!apiKey) {
+        document.getElementById('simplificationPanel').innerHTML =
+            '<p style="color: var(--text-muted);">No API key provided. Add your OpenAI key in setup to enable AI simplification.</p>';
+    }
+}
+
+// ============================================================
+// QUIZ PHASE
+// ============================================================
+let quizQuestions = [];
+let quizLanguage = 'en';
+
+async function startQuizPhase() {
+    const lang = nlpResults?.language || 'en';
+    quizLanguage = lang;
+    const isArabic = (lang === 'ar');
+
+    // Set UI text based on language
+    if (isArabic) {
+        document.getElementById('quizTitle').textContent = 'اختبار الفهم والاستيعاب';
+        document.getElementById('quizSubtitle').textContent = 'أجب عن الأسئلة التالية لتقييم مدى فهمك للنص.';
+        document.getElementById('quizLoadingMsg').textContent = 'جاري إنشاء أسئلة الفهم...';
+        document.getElementById('quizSubmitText').textContent = 'إرسال الإجابات';
+        document.getElementById('viewResultsBtnText').textContent = 'عرض نتائج الجلسة كاملة';
+        document.getElementById('newSessionBtnText').textContent = 'جلسة جديدة';
+    }
+
+    document.getElementById('quizPhase').classList.remove('hidden');
+    document.getElementById('quizLoading').classList.remove('hidden');
+    document.getElementById('quizQuestions').classList.add('hidden');
+    document.getElementById('quizSubmitArea').classList.add('hidden');
+    document.getElementById('quizResult').classList.add('hidden');
+
+    const apiKey = document.getElementById('apiKeyInput')?.value?.trim();
+    if (!apiKey) {
+        document.getElementById('quizLoading').innerHTML =
+            `<p style="color: var(--red);">⚠️ ${isArabic ? 'لا يوجد مفتاح API. لا يمكن إنشاء الأسئلة.' : 'No API key. Cannot generate questions.'}</p>
+             <button class="btn btn-primary" onclick="showResultsAfterQuiz()" style="margin-top: 16px;">
+                ${isArabic ? '📊 عرض النتائج' : '📊 View Results'}
+             </button>`;
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/generate-quiz', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                text: originalText,
+                language: lang,
+                api_key: apiKey,
+                num_questions: 2,
+            })
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        quizQuestions = data.questions || [];
+        if (quizQuestions.length === 0) {
+            throw new Error(isArabic ? 'لم يتم إنشاء أسئلة' : 'No questions generated');
+        }
+
+        renderQuizQuestions(quizQuestions, isArabic);
+    } catch(e) {
+        document.getElementById('quizLoading').innerHTML =
+            `<p style="color: var(--red);">⚠️ ${e.message}</p>
+             <button class="btn btn-primary" onclick="showResultsAfterQuiz()" style="margin-top: 16px;">
+                ${isArabic ? '📊 تخطي وعرض النتائج' : '📊 Skip & View Results'}
+             </button>`;
+    }
+}
+
+function renderQuizQuestions(questions, isArabic) {
+    document.getElementById('quizLoading').classList.add('hidden');
+    const container = document.getElementById('quizQuestions');
+    container.classList.remove('hidden');
+    document.getElementById('quizSubmitArea').classList.remove('hidden');
+
+    const dir = isArabic ? 'rtl' : 'ltr';
+    const align = isArabic ? 'right' : 'left';
+
+    let html = '';
+    questions.forEach((q, qi) => {
+        html += `<div class="card fade-in" style="margin-bottom: 16px; padding: 24px; direction: ${dir}; text-align: ${align};" id="quizQ${qi}">
+            <div style="font-size: 15px; font-weight: 700; color: var(--accent); margin-bottom: 4px;">
+                ${isArabic ? `السؤال ${qi + 1}` : `Question ${qi + 1}`}
+            </div>
+            <div style="font-size: 17px; font-weight: 600; margin-bottom: 16px; line-height: 1.7; color: var(--text-primary);">
+                ${q.question}
+            </div>
+            <div class="quiz-options" style="display: flex; flex-direction: column; gap: 10px;">`;
+
+        q.options.forEach((opt, oi) => {
+            html += `<label class="quiz-option" id="quizOpt-${qi}-${oi}" onclick="selectQuizOption(${qi}, ${oi})"
+                style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 10px; border: 2px solid var(--border); cursor: pointer; transition: all 0.2s; background: var(--bg-card);">
+                <span class="quiz-radio" style="width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;">
+                    <span class="quiz-radio-dot" style="width: 12px; height: 12px; border-radius: 50%; background: transparent; transition: all 0.2s;"></span>
+                </span>
+                <span style="font-size: 15px; line-height: 1.5;">${opt}</span>
+            </label>`;
+        });
+
+        html += `</div></div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+function selectQuizOption(questionIdx, optionIdx) {
+    // Clear previous selection for this question
+    for (let i = 0; i < 4; i++) {
+        const el = document.getElementById(`quizOpt-${questionIdx}-${i}`);
+        if (el) {
+            el.style.borderColor = 'var(--border)';
+            el.style.background = 'var(--bg-card)';
+            el.querySelector('.quiz-radio').style.borderColor = 'var(--border)';
+            el.querySelector('.quiz-radio-dot').style.background = 'transparent';
+        }
+    }
+    // Highlight selected
+    const selected = document.getElementById(`quizOpt-${questionIdx}-${optionIdx}`);
+    if (selected) {
+        selected.style.borderColor = 'var(--accent)';
+        selected.style.background = 'var(--accent-glow, rgba(99,102,241,0.08))';
+        selected.querySelector('.quiz-radio').style.borderColor = 'var(--accent)';
+        selected.querySelector('.quiz-radio-dot').style.background = 'var(--accent)';
+    }
+    // Store answer
+    if (!window._quizAnswers) window._quizAnswers = {};
+    window._quizAnswers[questionIdx] = optionIdx;
+}
+
+async function submitQuiz() {
+    const answers = window._quizAnswers || {};
+    const isArabic = (quizLanguage === 'ar');
+
+    // Check all questions answered
+    for (let i = 0; i < quizQuestions.length; i++) {
+        if (answers[i] === undefined) {
+            alert(isArabic ? 'يرجى الإجابة على جميع الأسئلة قبل الإرسال.' : 'Please answer all questions before submitting.');
+            return;
+        }
+    }
+
+    const submitBtn = document.getElementById('quizSubmitBtn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<span class="spinner" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:8px;"></span> ${isArabic ? 'جاري التقييم...' : 'Evaluating...'}`;
+
+    const answerArray = quizQuestions.map((_, i) => answers[i] ?? -1);
+
+    try {
+        const res = await fetch('/api/evaluate-quiz', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                questions: quizQuestions,
+                answers: answerArray,
+                combined_difficulty: window.sessionCorrelation?.combined_difficulty || 'Medium',
+                language: quizLanguage,
+            })
+        });
+        const evalData = await res.json();
+        window.quizEvaluation = evalData;
+        showQuizResult(evalData);
+    } catch(e) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `✅ ${isArabic ? 'إرسال الإجابات' : 'Submit Answers'}`;
+        alert(isArabic ? 'حدث خطأ أثناء التقييم. حاول مرة أخرى.' : 'Evaluation failed. Please try again.');
+    }
+}
+
+function showQuizResult(evalData) {
+    document.getElementById('quizSubmitArea').classList.add('hidden');
+    document.getElementById('quizResult').classList.remove('hidden');
+
+    const isArabic = (quizLanguage === 'ar');
+    const LEVEL_STYLES = {
+        advanced: { icon: '🏆', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', border: '#22c55e' },
+        intermediate: { icon: '📚', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: '#f59e0b' },
+        beginner: { icon: '💪', color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: '#ef4444' },
+    };
+
+    const style = LEVEL_STYLES[evalData.level_key] || LEVEL_STYLES.intermediate;
+
+    document.getElementById('quizLevelIcon').textContent = style.icon;
+
+    const badge = document.getElementById('quizLevelBadge');
+    badge.textContent = evalData.level;
+    badge.style.background = style.bg;
+    badge.style.color = style.color;
+    badge.style.border = `2px solid ${style.border}`;
+
+    document.getElementById('quizResultCard').style.borderColor = style.border;
+
+    document.getElementById('quizScoreText').innerHTML =
+        `${isArabic ? 'النتيجة:' : 'Score:'} <strong style="color: ${style.color}; font-size: 22px;">${evalData.correct_count} / ${evalData.total}</strong> <span style="color: var(--text-muted);">(${evalData.score_pct}%)</span>`;
+
+    document.getElementById('quizMessage').textContent = evalData.message;
+    document.getElementById('quizSuggestion').textContent = evalData.suggestion;
+
+    // Answer review
+    const dir = isArabic ? 'rtl' : 'ltr';
+    const align = isArabic ? 'right' : 'left';
+    let reviewHtml = `<h4 style="font-size: 15px; margin-bottom: 12px; color: var(--text-primary); direction: ${dir}; text-align: ${align};">${isArabic ? '📋 مراجعة الإجابات' : '📋 Answer Review'}</h4>`;
+
+    evalData.results.forEach((r, i) => {
+        const q = quizQuestions[i];
+        const isCorrect = r.is_correct;
+        const userOpt = q.options[r.user_answer] || '—';
+        const correctOpt = q.options[r.correct_answer] || '—';
+
+        reviewHtml += `<div style="padding: 14px; margin-bottom: 10px; border-radius: 10px; border-left: 4px solid ${isCorrect ? '#22c55e' : '#ef4444'}; background: ${isCorrect ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)'}; direction: ${dir}; text-align: ${align};">
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 6px; color: var(--text-primary);">${q.question}</div>
+            <div style="font-size: 13px; color: ${isCorrect ? '#22c55e' : '#ef4444'};">
+                ${isCorrect ? '✅' : '❌'} ${isArabic ? 'إجابتك:' : 'Your answer:'} ${userOpt}
+            </div>`;
+        if (!isCorrect) {
+            reviewHtml += `<div style="font-size: 13px; color: #22c55e; margin-top: 4px;">
+                ✅ ${isArabic ? 'الإجابة الصحيحة:' : 'Correct answer:'} ${correctOpt}
+            </div>`;
+        }
+        reviewHtml += `</div>`;
+    });
+
+    document.getElementById('quizAnswerReview').innerHTML = reviewHtml;
+
+    // Disable quiz option clicks after submission
+    document.querySelectorAll('.quiz-option').forEach(el => {
+        el.style.pointerEvents = 'none';
+    });
+
+    // Highlight correct/wrong in the questions above
+    evalData.results.forEach((r, qi) => {
+        for (let oi = 0; oi < 4; oi++) {
+            const el = document.getElementById(`quizOpt-${qi}-${oi}`);
+            if (!el) continue;
+            if (oi === r.correct_answer) {
+                el.style.borderColor = '#22c55e';
+                el.style.background = 'rgba(34,197,94,0.08)';
+            } else if (oi === r.user_answer && !r.is_correct) {
+                el.style.borderColor = '#ef4444';
+                el.style.background = 'rgba(239,68,68,0.08)';
+            }
+        }
+    });
+}
+
+function showResultsAfterQuiz() {
+    document.getElementById('quizPhase').classList.add('hidden');
+    const correlation = window.sessionCorrelation || {};
+    showResults(correlation);
+}
+
+function renderSimplifications(data) {
+    const panel = document.getElementById('simplificationPanel');
+    let html = '';
+
+    // Word suggestions
+    const words = data.word_suggestions || {};
+    if (Object.keys(words).length > 0) {
+        html += '<div style="margin-bottom: 16px;"><h4 style="font-size: 14px; margin-bottom: 10px; color: var(--text-primary);">📝 Simpler Word Alternatives</h4>';
+        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">';
+        for (const [hard, simple] of Object.entries(words)) {
+            html += `<div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-input); border-radius: 8px; border-left: 3px solid var(--red);">
+                <span style="text-decoration: line-through; color: var(--red); font-weight: 600;">${hard}</span>
+                <span style="color: var(--text-muted);">→</span>
+                <span style="color: var(--green); font-weight: 600;">${simple}</span>
+            </div>`;
+        }
+        html += '</div></div>';
+    }
+
+    // Sentence suggestions
+    const sents = data.sentence_suggestions || {};
+    if (Object.keys(sents).length > 0) {
+        html += '<div><h4 style="font-size: 14px; margin-bottom: 10px; color: var(--text-primary);">📄 Simplified Sentences</h4>';
+        for (const [original, simplified] of Object.entries(sents)) {
+            html += `<div style="margin-bottom: 12px; padding: 12px; background: var(--bg-input); border-radius: 8px;">
+                <div style="font-size: 13px; color: var(--red); text-decoration: line-through; margin-bottom: 6px;">${original.substring(0, 150)}${original.length > 150 ? '...' : ''}</div>
+                <div style="font-size: 13px; color: var(--green);">✅ ${simplified}</div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    if (!html) {
+        html = '<p style="color: var(--green);">✅ No simplifications needed.</p>';
+    }
+
+    if (data.error) {
+        html += `<p style="color: var(--red); margin-top: 8px; font-size: 12px;">⚠️ ${data.error}</p>`;
+    }
+
+    panel.innerHTML = html;
+}
+
+function donutSVG(pct, color, centerLabel, size) {
+    size = size || 130;
+    const stroke = 14;
+    const r = (size - stroke) / 2;
+    const c = 2 * Math.PI * r;
+    const offset = c - (Math.max(0, Math.min(100, pct)) / 100) * c;
+    return `
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="donut-svg">
+            <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--border)" stroke-width="${stroke}"/>
+            <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}"
+                stroke-dasharray="${c}" stroke-dashoffset="${offset}" stroke-linecap="round"
+                transform="rotate(-90 ${size/2} ${size/2})" style="transition: stroke-dashoffset 1s ease;"/>
+            <text x="50%" y="50%" text-anchor="middle" dy="0.35em"
+                style="font-family: var(--font-mono); font-weight: 700; font-size: 22px; fill: ${color};">
+                ${centerLabel}
+            </text>
+        </svg>`;
+}
+
+function showResults(correlation) {
+    document.getElementById('sessionPhase').classList.add('hidden');
+    document.getElementById('resultsPhase').classList.remove('hidden');
+
+    // Fatigue Alert Banner (top)
+    const fatigueBanner = document.getElementById('fatigueAlertBanner');
+    if (correlation.fatigue_alert) {
+        fatigueBanner.style.display = 'block';
+        fatigueBanner.innerHTML = `
+            <div class="alert-banner alert-danger">
+                <div class="alert-icon pulse">🧠</div>
+                <div>
+                    <div class="alert-title">Cognitive Fatigue Detected</div>
+                    <div class="alert-text">${correlation.fatigue_message || ''}</div>
+                </div>
+            </div>
+        `;
+    } else {
+        fatigueBanner.style.display = 'block';
+        fatigueBanner.innerHTML = `
+            <div class="alert-banner alert-success">
+                <div class="alert-icon">✅</div>
+                <div>
+                    <div class="alert-title">No Cognitive Fatigue</div>
+                    <div class="alert-text">${correlation.fatigue_message || ''}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // KPI Row — 4 cards
+    const combinedColor = (correlation.combined_difficulty || 'Easy') === 'Hard' ? 'var(--red)' : 'var(--green)';
+    document.getElementById('resultMetrics').innerHTML = `
+        <div class="metric-card kpi" style="border-left: 4px solid ${combinedColor};">
+            <div class="kpi-icon" style="background: rgba(239,68,68,0.1); color: ${combinedColor};">📊</div>
+            <div>
+                <div class="metric-value" style="color: ${combinedColor}; font-size: 24px; text-align:left;">${correlation.combined_difficulty || '—'}</div>
+                <div class="metric-label" style="text-align:left;">Overall Difficulty</div>
+            </div>
+        </div>
+        <div class="metric-card kpi" style="border-left: 4px solid var(--accent);">
+            <div class="kpi-icon" style="background: var(--accent-glow); color: var(--accent);">📝</div>
+            <div>
+                <div class="metric-value" style="font-size: 24px; text-align:left;">${correlation.nlp_difficulty || '—'}</div>
+                <div class="metric-label" style="text-align:left;">Text NLP</div>
+            </div>
+        </div>
+        <div class="metric-card kpi" style="border-left: 4px solid var(--yellow);">
+            <div class="kpi-icon" style="background: var(--yellow-bg); color: var(--yellow);">😊</div>
+            <div>
+                <div class="metric-value" style="font-size: 24px; text-align:left;">${correlation.facial_difficulty || '—'}</div>
+                <div class="metric-label" style="text-align:left;">Reader's Face</div>
+            </div>
+        </div>
+        <div class="metric-card kpi" style="border-left: 4px solid var(--green);">
+            <div class="kpi-icon" style="background: var(--green-bg); color: var(--green);">🎯</div>
+            <div>
+                <div class="metric-value" style="color: var(--green); font-size: 24px; text-align:left;">${correlation.match_percentage || 0}%</div>
+                <div class="metric-label" style="text-align:left;">Match Rate</div>
+            </div>
+        </div>
+    `;
+
+    // Analytics Row — Stability donut + Reader Profile + Match donut
+    const stab = correlation.stability_score ?? 0;
+    const stabColor = stab >= 75 ? 'var(--green)' : stab >= 50 ? 'var(--yellow)' : 'var(--red)';
+    const matchPct = correlation.match_percentage || 0;
+    const matchColor = matchPct >= 70 ? 'var(--green)' : matchPct >= 40 ? 'var(--yellow)' : 'var(--red)';
+    const profile = correlation.reader_profile || {icon:'📖', label:'—', desc:''};
+
+    document.getElementById('analyticsRow').innerHTML = `
+        <div class="card dashboard-card">
+            <div class="card-header" style="margin-bottom: 8px;"><h3>📈 Reading Stability</h3></div>
+            <div class="donut-wrap">${donutSVG(stab, stabColor, stab + '%')}</div>
+            <div class="dashboard-card-label" style="color: ${stabColor};">${correlation.stability_label || ''}</div>
+            <p class="dashboard-card-desc">${correlation.stability_desc || ''}</p>
+            <div style="font-size:11px; color: var(--text-muted); margin-top:4px;">σ = ${correlation.std_dev ?? '—'}</div>
+        </div>
+        <div class="card dashboard-card">
+            <div class="card-header" style="margin-bottom: 8px;"><h3>🧬 Reader Profile</h3></div>
+            <div class="profile-icon">${profile.icon}</div>
+            <div class="dashboard-card-label" style="color: var(--accent);">${profile.label}</div>
+            <p class="dashboard-card-desc">${profile.desc}</p>
+        </div>
+        <div class="card dashboard-card">
+            <div class="card-header" style="margin-bottom: 8px;"><h3>🎯 Match Rate</h3></div>
+            <div class="donut-wrap">${donutSVG(matchPct, matchColor, matchPct + '%')}</div>
+            <div class="dashboard-card-label" style="color: ${matchColor};">NLP vs Reader</div>
+            <p class="dashboard-card-desc">How well the text-difficulty prediction matched the reader's actual experience.</p>
+        </div>
+    `;
+
+    // Correlation card
+    document.getElementById('correlationCard').innerHTML = `
+        <div class="card-header"><h3>🔗 Correlation Analysis</h3></div>
+        <div class="correlation-match">
+            <div class="correlation-item">
+                <div class="label">NLP Prediction</div>
+                <div class="badge badge-${(correlation.nlp_difficulty || 'medium').toLowerCase()}" style="font-size: 16px; padding: 8px 20px;">
+                    ${correlation.nlp_difficulty || '—'}
+                </div>
+            </div>
+            <div class="correlation-vs">VS</div>
+            <div class="correlation-item">
+                <div class="label">Reader's Experience</div>
+                <div class="badge badge-${(correlation.facial_difficulty || 'medium').toLowerCase()}" style="font-size: 16px; padding: 8px 20px;">
+                    ${correlation.facial_difficulty || '—'}
+                </div>
+            </div>
+        </div>
+        <div style="text-align: center; margin-top: 16px;">
+            <p style="font-size: 15px; font-weight: 600; color: ${matchColor};">${correlation.reader_assessment || ''}</p>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">${correlation.suggestion || ''}</p>
+        </div>
+    `;
+
+    // Cognitive Signal Distribution
+    const dist = correlation.signal_counts || {};
+    const totalFrames = correlation.total_frames_analyzed || 1;
+    const SIGNAL_INFO = {
+        'eyes_squinting': {label: '👀 Eyes Squinting', color: '#ef4444', desc: 'Concentrating hard'},
+        'brows_raised': {label: '😲 Brows Raised', color: '#f59e0b', desc: 'Confused by content'},
+        'brows_furrowed': {label: '😤 Brows Furrowed', color: '#ef4444', desc: 'Struggling'},
+
+    };
+    const distHtml = Object.entries(dist).map(([sig, count]) => {
+        const pct = parseFloat(((count / totalFrames) * 100).toFixed(1));
+        const info = SIGNAL_INFO[sig] || {label: sig, color: '#64748b', desc: ''};
+        return `
+            <div class="signal-donut-card">
+                ${donutSVG(pct, info.color, pct + '%', 120)}
+                <div class="signal-donut-label">${info.label}</div>
+                <div class="signal-donut-count">${count} / ${totalFrames} frames</div>
+                <div class="signal-donut-desc">${info.desc}</div>
+            </div>
+        `;
+    }).join('');
+    document.getElementById('emotionDistribution').innerHTML = distHtml || '<p style="color: var(--green); padding: 12px;">✅ No difficulty signals detected — reader was comfortable.</p>';
+}
+
+async function downloadReport() {
+    try {
+        const res = await fetch('/api/generate-report', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                nlp_analysis: nlpResults,
+                correlation: window.sessionCorrelation || {},
+                complex_words: (window.lastAnalysis || {}).complex_words || [],
+                word_suggestions: window.lastSimplification?.word_suggestions || {},
+                sentence_suggestions: window.lastSimplification?.sentence_suggestions || {},
+            })
+        });
+        const data = await res.json();
+        if (data.url) {
+            window.open(data.url, '_blank');
+        }
+    } catch(e) {
+        alert('Error generating report: ' + e.message);
+    }
+}
+
+function resetSession() {
+    document.getElementById('resultsPhase').classList.add('hidden');
+    document.getElementById('quizPhase').classList.add('hidden');
+    document.getElementById('setupPhase').classList.remove('hidden');
+    document.getElementById('emotionTimeline').innerHTML = '';
+    document.getElementById('startBtn').disabled = false;
+    facialResults = [];
+    frameCount = 0;
+    currentWordIndex = 0;
+    words = [];
+    nlpResults = null;
+    sessionActive = false;
+    sessionInterval = null;
+    wordAdvanceInterval = null;
+    hardWordsFromFace = new Set();
+    hardSentencesFromFace = new Set();
+    originalText = '';
+    liveHardStreak = 0;
+    quizQuestions = [];
+    window._quizAnswers = {};
+    window.quizEvaluation = null;
+    updateFatigueUI();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}TextDifficulty.ai — Home{% endblock %}
+
+{% block content %}
+<div class="hero fade-in">
+    <h1>Evaluating Text Difficulty<br>Using <span>AI-Powered</span> Analysis</h1>
+    <p>Combine NLP readability metrics with real-time facial expression analysis to understand how readers truly experience your text.</p>
+    <div class="hero-actions">
+        <a href="/analyze" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Analyze Text
+        </a>
+        <a href="/read" class="btn btn-secondary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Start Reading Session
+        </a>
+    </div>
+</div>
+
+<div class="grid-3" style="margin-top: 40px;">
+    <div class="card feature-card fade-in" style="animation-delay: 0.1s">
+        <div class="feature-icon" style="background: var(--accent-glow); color: var(--accent);">📊</div>
+        <h3>NLP Readability Analysis</h3>
+        <p>Compute Flesch scores, grade levels, word complexity, and identify the hardest words in any text.</p>
+    </div>
+    <div class="card feature-card fade-in" style="animation-delay: 0.2s">
+        <div class="feature-icon" style="background: var(--green-bg); color: var(--green);">😊</div>
+        <h3>Facial Expression Detection</h3>
+        <p>Real-time face analysis using MediaPipe to detect emotions and map them to cognitive difficulty levels.</p>
+    </div>
+    <div class="card feature-card fade-in" style="animation-delay: 0.3s">
+        <div class="feature-icon" style="background: var(--yellow-bg); color: var(--yellow);">🔗</div>
+        <h3>Smart Correlation Engine</h3>
+        <p>Compare NLP predictions with actual reader reactions to validate text difficulty assessment.</p>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-top: 24px;">
+    <div class="card feature-card fade-in" style="animation-delay: 0.4s">
+        <div class="feature-icon" style="background: var(--red-bg); color: var(--red);">🗺️</div>
+        <h3>Word Difficulty Heatmap</h3>
+        <p>Visualize your text with color-coded words showing exactly where readers struggle most.</p>
+    </div>
+    <div class="card feature-card fade-in" style="animation-delay: 0.5s">
+        <div class="feature-icon" style="background: rgba(168,85,247,0.1); color: #a855f7;">📄</div>
+        <h3>PDF Report Export</h3>
+        <p>Generate comprehensive reports with all metrics, correlations, and recommendations for teachers.</p>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 40px; text-align: center; padding: 32px;">
+    <h3 style="margin-bottom: 8px;">How It Works</h3>
+    <p style="color: var(--text-secondary); max-width: 700px; margin: 0 auto 24px; font-size: 14px;">
+        The system uses two parallel pipelines: NLP analysis predicts text difficulty from linguistic features,
+        while the CV pipeline reads facial expressions during reading. The correlation engine then compares both
+        to give a complete picture of the reading experience.
+    </p>
+    <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
+        <div class="badge badge-easy">Pipeline 1: NLP → Readability Metrics</div>
+        <span style="color: var(--text-muted); font-size: 20px;">+</span>
+        <div class="badge badge-medium">Pipeline 2: CV → Facial Expressions</div>
+        <span style="color: var(--text-muted); font-size: 20px;">=</span>
+        <div class="badge badge-hard">Correlation → True Difficulty</div>
+    </div>
+</div>
+{% endblock %}
