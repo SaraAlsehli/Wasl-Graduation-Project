@@ -170,9 +170,6 @@ This produces a highly expressive model well-suited to the overlapping, non-line
 | `subsample` | 0.8 | Stochastic boosting — reduces variance, improves robustness |
 | `min_samples_split` | 10 | Guards against overfitting to small node populations |
 
-### Principled Handling of Class Imbalance
-
-To ensure equitable learning across all stress levels, **balanced sample weights** were computed via `sklearn`'s `compute_sample_weight('balanced')` — re-weighting each sample inversely proportional to its class frequency. This is a more principled approach than simple oversampling, preserving the original data distribution while correcting for bias toward majority classes.
 
 ### Feature Selection via Mutual Information
 
