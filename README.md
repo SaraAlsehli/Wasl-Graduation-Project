@@ -1,7 +1,5 @@
 # Wasl-Graduation-Project
 
-# Text Difficulty Evaluator
-
 **Evaluating Text Difficulty Using Readability Metrics and Facial Expression Analysis** 
 
 UQU Graduation Project — F12
