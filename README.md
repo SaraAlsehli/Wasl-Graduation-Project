@@ -39,8 +39,8 @@ Combines unsupervised learning (to discover inherent data structure and generate
 - 🔧 Engineer meaningful **derived features** (pose magnitude, eye magnitude, pose-eye interaction) to enrich the feature space
 - 🔍 Apply **Gaussian Mixture Model clustering** to discover hidden stress-related groupings without labeled data
 - 🏷️ Generate **data-driven stress labels** from cluster assignments to enable supervised learning
-- 🤖 Train a high-performance **Gradient Boosting classifier** achieving ~96% cross-validated accuracy
-- ✅ Validate model robustness using **5-fold Stratified Cross-Validation** and an independent held-out test set
+- 🤖 Train a high-performance **Gradient Boosting classifier** 
+
 
 ---
 
