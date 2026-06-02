@@ -3,7 +3,7 @@ textstat>=0.7
 nltk>=3.8
 wordfreq>=3.0
 opencv-python-headless
-mediapipe-silicon
+mediapipe
 reportlab>=4.0
 arabic-reshaper>=3.0
 python-bidi>=0.4
