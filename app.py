@@ -291,8 +291,8 @@ def _reset_baseline():
                       "s_ear": [], "s_brow_h": [], "s_brow_d": [], "s_mar": []})
 
 # Persistent FaceMesh instance — avoids re-loading the model every frame
-import mediapipe as mp
-_face_mesh = mp.solutions.face_mesh.FaceMesh(
+from mediapipe.python.solutions import face_mesh as mp_face_mesh
+_face_mesh = mp_face_mesh.FaceMesh(
     static_image_mode=False, max_num_faces=1,
     refine_landmarks=True, min_detection_confidence=0.3,
     min_tracking_confidence=0.3
